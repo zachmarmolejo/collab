@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build-scope:
@@ -48,15 +49,15 @@ jobs:
           echo "First 10:"
           head -10 scope.txt
 
-      - name: Commit scope.txt if changed
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          if git diff --quiet -- scope.txt; then
-            echo "scope.txt unchanged; nothing to commit"
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add scope.txt
-          git commit -m "chore: refresh scope.txt"
-          git push
+      - name: Open PR if scope.txt changed
+        if: github.event_name != 'pull_request'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/refresh-scope
+          base: main
+          commit-message: "chore: refresh scope.txt"
+          title: "chore: refresh scope.txt"
+          body: |
+            Automated refresh of `scope.txt` from the latest Bugcrowd in-scope website targets.
+          add-paths: scope.txt
+          delete-branch: true
