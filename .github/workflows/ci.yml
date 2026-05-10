@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-scope:
     runs-on: ubuntu-latest
@@ -17,10 +20,10 @@ jobs:
         run: |
           curl -fsSL \
             https://raw.githubusercontent.com/arkadiyt/bounty-targets-data/main/data/bugcrowd_data.json \
-            -o bugcrowd_data.json
-          echo "Fetched $(wc -c < bugcrowd_data.json) bytes"
+            -o /tmp/bugcrowd_data.json
+          echo "Fetched $(wc -c < /tmp/bugcrowd_data.json) bytes"
 
-      - name: Extract in-scope website targets to scope.txt
+      - name: Build scope.txt (extract + sanitize to bare domains)
         run: |
           jq -r '
             .[]
@@ -28,15 +31,32 @@ jobs:
             | select((.category // .type // "") == "website")
             | (.uri // .target // .name // empty)
             | select(. != null and . != "")
-          ' bugcrowd_data.json | sort -u > scope.txt
+          ' /tmp/bugcrowd_data.json \
+          | sed -E '
+              s#^[a-zA-Z][a-zA-Z0-9+.-]*://##;
+              s#^[^/@]*@##;
+              s#^\*\.##;
+              s#[/?#].*##;
+              s#:.*##
+            ' \
+          | tr '[:upper:]' '[:lower:]' \
+          | grep -E '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' \
+          | grep -Ev '^[0-9]+(\.[0-9]+)+$' \
+          | sort -u > scope.txt
 
           echo "scope.txt entries: $(wc -l < scope.txt)"
           echo "First 10:"
           head -10 scope.txt
 
-      - name: Upload scope.txt artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: scope
-          path: scope.txt
-          if-no-files-found: error
+      - name: Commit scope.txt if changed
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if git diff --quiet -- scope.txt; then
+            echo "scope.txt unchanged; nothing to commit"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scope.txt
+          git commit -m "chore: refresh scope.txt"
+          git push
