@@ -8,13 +8,35 @@ on:
   workflow_dispatch:
 
 jobs:
-  hello:
+  build-scope:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Say hello
-        run: echo "Hello from ${{ github.repository }} on ${{ github.ref }}"
+      - name: Fetch Bugcrowd program data
+        run: |
+          curl -fsSL \
+            https://raw.githubusercontent.com/arkadiyt/bounty-targets-data/main/data/bugcrowd_data.json \
+            -o bugcrowd_data.json
+          echo "Fetched $(wc -c < bugcrowd_data.json) bytes"
 
-      - name: Show repo contents
-        run: ls -la
+      - name: Extract in-scope website targets to scope.txt
+        run: |
+          jq -r '
+            .[]
+            | .targets.in_scope[]?
+            | select((.category // .type // "") == "website")
+            | (.uri // .target // .name // empty)
+            | select(. != null and . != "")
+          ' bugcrowd_data.json | sort -u > scope.txt
+
+          echo "scope.txt entries: $(wc -l < scope.txt)"
+          echo "First 10:"
+          head -10 scope.txt
+
+      - name: Upload scope.txt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scope
+          path: scope.txt
+          if-no-files-found: error
