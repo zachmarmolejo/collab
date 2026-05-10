@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Say hello
+        run: echo "Hello from ${{ github.repository }} on ${{ github.ref }}"
+
+      - name: Show repo contents
+        run: ls -la
